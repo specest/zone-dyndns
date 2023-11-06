@@ -1,0 +1,17 @@
+version: "3"
+
+services:
+  zone-dyndns:
+    build:
+      context: .
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      USER: ${USER}
+      PASSWORD: ${PASSWORD}
+      NETWORK_RETRY_DELAY: ${NETWORK_RETRY_DELAY}
+      CHECK_FREQUENCY: ${CHECK_FREQUENCY}
+    volumes:
+      - ./logs:/zone-dyndns/logs/
+      - ./conf:/zone-dyndns/conf/

@@ -1,0 +1,8 @@
+logs/updater.log
+conf/records.conf
+conf/ip.conf
+
+src/logs/updater.log
+src/conf/records.conf
+src/conf/ip.conf
+.env
