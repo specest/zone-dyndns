@@ -32,22 +32,22 @@ func getPublicIp(publicIp *string) {
 	} else {
 		log.Printf("Public IP is %v", string(ip))
 	}
-	*publicIp = string(ip)
+	*publicIp = strings.TrimSpace(string(ip))
 }
 
-// Check if IP stored locally and actual public IP match.
-func matchIp(publicIp string) bool {
+func getRecordedIp() string {
 	f, err := os.ReadFile("conf/ip.conf")
 	if err != nil {
 		log.Fatalf("unable to read file: %v", err)
 	}
-	recordedIp := strings.TrimSpace(string(f))
-	log.Printf("Current IP-address on record is %v\n", recordedIp)
-	if strings.TrimSpace(recordedIp) != strings.TrimSpace(publicIp) {
-		log.Printf("Recorded IP and public IP mismatch, attempting to update DNS records. \n\t\t\t\t\tPublic IP: %v\n\t\t\t\t\tRecorded IP: %v", recordedIp, publicIp)
-		return false
+
+	ip := strings.TrimSpace(string(f))
+	if ip == "" {
+		ip = "missing"
 	}
-	return true
+	log.Printf("Current IP-address on record is %v\n", ip)
+
+	return ip
 }
 
 func parseDomains() map[string]string {

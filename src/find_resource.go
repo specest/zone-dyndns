@@ -14,7 +14,9 @@ type Resources []struct {
 	Name string `json:"name"`
 }
 
-// Check if all the (sub)domains have a resource identifier
+// Checks if all the (sub)domains have a resource identifier.
+// Each record is identified by a string of numbers, i.e resource identifier. A domain can
+// have multiple A records. If you are using this tool, you probably shouldn't have more than one.
 func getMissingResources(domains map[string]string) map[string]string {
 	missingResources := make(map[string]string)
 	for domain, id := range domains {

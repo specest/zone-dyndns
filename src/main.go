@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -20,7 +21,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("error opening file: %v", err)
 		}
-		log.SetOutput(l)
+		mw := io.MultiWriter(os.Stdout, l)
+		log.SetOutput(mw)
+
 		// Check the environment variables error after setting log output to file
 		if envError != nil {
 			log.Fatalf("Error parsing environment variables. %v", envError)
@@ -35,15 +38,19 @@ func main() {
 
 		var publicIp string
 		getPublicIp(&publicIp) // This has to be a pointer, otherwise retry on network failure won't work
+		recordedIp := getRecordedIp()
 
-		if !matchIp(publicIp) {
+		if recordedIp != publicIp {
+			log.Println("Recorded IP and public IP mismatch, attempting to update DNS records.")
 			transactions += len(domains) - len(missing)
 			success += updateRecords(domains, publicIp)
 		}
+
 		if len(missing) > 0 {
 			transactions += len(missing)
 			success += createRecords(missing, domains, publicIp)
 		}
+
 		if success == transactions {
 			updateIpRecord(publicIp)
 			updateDomainList(domains)
