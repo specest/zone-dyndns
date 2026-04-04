@@ -24,23 +24,43 @@ func updateRecords(domains map[string]string, publicIp string) int {
 
 func updateRecord(domain, id, ip string) int {
 	domainRoot := getDomainRoot(domain)
-	url := fmt.Sprintf("https://api.zone.eu/v2/dns/%v/a/%v", domainRoot, id)
-	var jsonStr = []byte(fmt.Sprintf(`{"destination": "%v", "name": "%v"}`, ip, domain))
-	client := &http.Client{}
-	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(jsonStr))
-	req.Header.Set("Content-Type", "application/json")
+	// %s is generally preferred over %v for strings
+	url := fmt.Sprintf("https://api.zone.eu/v2/dns/%s/a/%s", domainRoot, id)
+
+	// 1. Use json.Marshal to ensure valid JSON encoding and avoid escaping issues
+	payload := map[string]string{
+		"destination": ip,
+		"name":        domain,
+	}
+	jsonBytes, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Updating DNS A-record for %v failed, error: %v", domain, err)
+		log.Printf("Failed to encode JSON payload: %v", err)
+		return 0
 	}
 
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		// 2. Error checked BEFORE modifying req to prevent nil pointer panics
+		log.Printf("Creating request for %v failed, error: %v", domain, err)
+		return 0
+	}
+
+	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth(USERNAME, PASSWORD)
+
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Error getting response from zone API: %v", err)
 		log.Printf("Trying again in %v seconds", NETWORK_RETRY_DELAY)
-		time.Sleep(time.Second * 15)
+		// 3. Fixed hardcoded sleep to actually use your constant
+		time.Sleep(time.Duration(NETWORK_RETRY_DELAY) * time.Second)
+		
+		// Note: Consider passing a "retries" integer to avoid infinite recursion
 		return updateRecord(domain, id, ip)
 	}
+	// 4. CRITICAL: Always close the response body to prevent resource leaks
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -52,6 +72,7 @@ func updateRecord(domain, id, ip string) int {
 	switch resp.StatusCode {
 	case 200:
 		log.Printf("Success: %v %v %v", resp.Status, domain, s)
+		return 1
 	case 401:
 		log.Printf("Failed to update resource. Unauthorized. Error: %v %v %v", resp.Status, domain, s)
 		return 0
@@ -65,8 +86,8 @@ func updateRecord(domain, id, ip string) int {
 		log.Printf("Response:\nresource: %v\nbody: %v\nstatus: %v", resp.Status, domain, s)
 		return 0
 	}
-	return 1
 }
+
 
 // Create new records and resource id's for new domains
 func createRecords(missing, domains map[string]string, ip string) int {

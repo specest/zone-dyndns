@@ -11,7 +11,7 @@ import (
 )
 
 func getPublicIp(publicIp *string) {
-	url := "https://api.ipify.org?format=text"
+	url := "https://ifconfig.me/ip"
 	log.Println("Getting IP address from ipify")
 	resp, err := http.Get(url)
 	if err != nil {

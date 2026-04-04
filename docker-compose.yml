@@ -5,13 +5,15 @@ services:
     build:
       context: .
     restart: always
-    env_file:
-      - ./.env
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
-      USER: ${USER}
+      USERNAME: ${USERNAME}
       PASSWORD: ${PASSWORD}
       NETWORK_RETRY_DELAY: ${NETWORK_RETRY_DELAY}
       CHECK_FREQUENCY: ${CHECK_FREQUENCY}
+      TZ: ${TZ}
     volumes:
       - ./logs:/zone-dyndns/logs/
       - ./conf:/zone-dyndns/conf/

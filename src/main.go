@@ -6,10 +6,12 @@ import (
 	"os"
 	"strconv"
 	"time"
+        "strings"
 )
 
-var USERNAME string = os.Getenv("USERNAME")
-var PASSWORD string = os.Getenv("PASSWORD")
+
+var USERNAME string = strings.Trim(os.Getenv("USERNAME"), " \"'\r\n\t")
+var PASSWORD string = strings.Trim(os.Getenv("PASSWORD"), " \"'\r\n\t")
 var NETWORK_RETRY_DELAY time.Duration // How long to wait before retrying on network error (seconds)
 var CHECK_FREQUENCY time.Duration     // How often to check the IP (minutes)
 
