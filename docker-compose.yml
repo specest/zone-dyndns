@@ -1,19 +1,71 @@
-version: "3"
-
+# `version:` is gone on purpose: Compose v2 ignores it and warns that it is obsolete.
 services:
   zone-dyndns:
     build:
       context: .
-    restart: always
+    image: zone-dyndns:local
+
+    # unless-stopped rather than always: `always` brought the container back after a
+    # daemon restart even when it had been stopped deliberately, which turns planned
+    # maintenance into a surprise. An unexpected exit still restarts, which is what
+    # makes a broken config loud. To disable it for good: `docker compose stop`.
+    restart: unless-stopped
+
+    # The identity the container runs as. Default 65534 (nobody) is the same value the
+    # image sets, so on a host you administer as root you can leave this alone: root can
+    # read and edit whatever the updater writes regardless of who owns it.
+    #
+    # Set PUID/PGID in .env only when a non-root account is the one that edits
+    # records.conf - then the files the updater rewrites come back owned by that account
+    # instead of uid 65534, which is mode 0660 and therefore unreadable to anyone but its
+    # owner and root.
+    #
+    # Whatever it is set to, ./conf must be writable by it, or every config write logs a
+    # permission warning: `ls -ld conf` to check, `chown -R <uid>:<gid> conf` to fix.
+    user: "${PUID:-65534}:${PGID:-65534}"
+
+    # Nothing this program does needs privilege: no listening socket, no raw packets,
+    # no device access. Capabilities are dropped rather than merely not-used, so a bug
+    # cannot reach them.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # The only thing written at runtime is the conf mount; since the log file went to
+    # stdout there is no reason for the rest of the filesystem to be writable. If
+    # something ever needs a scratch file, add `tmpfs: [/tmp]` rather than lifting this.
+    read_only: true
+
+    # Deliberate: the resolver used for api.zone.eu and the IP service. Hardcodes
+    # Google; keep if your host resolver was the thing timing out, otherwise drop it
+    # and let Docker use the host's configuration.
     dns:
       - 8.8.8.8
       - 8.8.4.4
+
     environment:
-      USERNAME: ${USERNAME}
-      PASSWORD: ${PASSWORD}
+      # ZONE_* rather than USERNAME/PASSWORD: pam sets USERNAME in every login shell,
+      # so a missing value used to be filled in with the operator's login name and the
+      # API answered 401 forever with no hint why.
+      ZONE_USERNAME: ${ZONE_USERNAME}
+      ZONE_API_KEY: ${ZONE_API_KEY}
       NETWORK_RETRY_DELAY: ${NETWORK_RETRY_DELAY}
       CHECK_FREQUENCY: ${CHECK_FREQUENCY}
+      MAX_ATTEMPTS: ${MAX_ATTEMPTS:-5}
+      # debug | info | warn | error. info logs only things that happened; use debug
+      # when something needs diagnosing and you want to see every poll.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       TZ: ${TZ}
+
+    # The updater writes to stdout only; retention belongs to the logging driver, so
+    # the log cannot grow without bound the way logs/updater.log did (6 MB, no
+    # rotation). Read with `docker compose logs -f`, cap with these two numbers.
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
     volumes:
-      - ./logs:/zone-dyndns/logs/
       - ./conf:/zone-dyndns/conf/

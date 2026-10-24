@@ -1,8 +1,16 @@
+# Nothing writes here any more (stdout only), but an older image would, and a 6 MB log
+# must not become a commit.
 logs/updater.log
-conf/records.conf
-conf/ip.conf
 
-src/logs/updater.log
-src/conf/records.conf
-src/conf/ip.conf
+conf/records.conf
+
 .env
+# Any backup of the secrets file (an editor swap, a manual copy) must be ignored too.
+.env.bak*
+.env.*.tmp
+
+# Session transcripts from the agent that did this work: not part of the project.
+pi-session-*.html
+
+# Compiled output from `go build` in src/.
+src/updater

@@ -1,5 +1,14 @@
-# Enter (sub)domains with resource numbers you want to point to your own (dynamic) IP-address
-# Each (sub)domain and resource number key-value pair on its own separate line
-# example.org=12323
-# blog.example.org=146532
-# example.com=112122
+# The (sub)domains you want to point at your own (dynamic) IP address.
+#
+# One per line, no resource numbers. The tool reads the current A-records for each zone
+# from Zone and matches them by name, so there is nothing to look up in the Zone
+# administration page and nothing on disk that can go stale.
+#
+# A leftover "=12323" from the older format is ignored - and stripped off the first time
+# the tool tidies this file up.
+#
+# example.org
+# blog.example.org
+#
+# Records in the same zone that are not listed here are left exactly as they are: they are
+# named in the log at LOG_LEVEL=DEBUG so you can see what the tool ignored.

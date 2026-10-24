@@ -1,102 +1,127 @@
 # zone-dyndns
 
-Dynamic DNS for domains registered in zone.ee / zone.eu. This tool allows you to create and update DNS A-records at zone.ee / zone.eu domain name registrar using their API. 
+Keeps DNS A-records at [Zone](https://zone.eu) (zone.ee / zone.eu) pointed at your dynamic
+public IP. Go, one Docker container.
 
-Written in Go, runs in a docker container. 
+## How it works
 
-Builds and runs fine on: 
-* Fedora 38 - x86 
-* MacOS - Apple M1 
-* Debian Bookworm - Raspberry Pi 4
+Once every `CHECK_FREQUENCY` (5 minutes by default):
 
-### Disclaimer
+1. Read your public IP from `https://ifconfig.me/ip`.
+2. Read the A-records of each zone named in `conf/records.conf` from the Zone API.
+3. Repoint every listed record that points elsewhere. Create the listed records that are missing.
 
-* This is a personal project quickly thrown together by someone who is not a professional programmer. Use with caution. 
+The live listing is the only state, so nothing cached can go stale. The tool adds records and
+repoints them. It never deletes one, and it ignores records that `records.conf` does not name.
 
-* This has barely been tested. You might run into all sorts of trouble. Feel free to let me know, I might add a fix.
+## Requirements
 
-* You will probably run into trouble if you want to add more than ten A-records per root domain.
+Docker with Compose v2 ([instructions](https://docs.docker.com/engine/install/)), a Zone
+account with an [API key](https://help.zone.eu/en/kb/zone-api-en/), and a domain in that account.
 
-
-### Why should I use it?
-
-You have a dynamic IP addres and have registered a domain at zone.ee and
-* want to host something on your own infrastructure
-* want to have VPN access to your (home) network
-* ... (let me know!)
-
-### Requirements
-
-* Docker & docker compose [install instructions](https://docs.docker.com/engine/install/)
-* Zone.ee account & [API key](https://help.zone.eu/en/kb/zone-api-en/), a domain registered at zone.ee
-
-### How it works
-
-The tool checks your public IP address (ipify API) every 5 minutes 
-(this can be configured). It then compares the result to the 
-IP address stored locally. If there is a mismatch, it updates all the
- A-records in zone.ee (domains listed in `conf/records.conf`) to 
- point to your new public IP-address. 
-
-### How to use
-
-Clone the repo and add .env and configuration files
+## Install
 
 ```bash
 git clone https://github.com/specest/zone-dyndns.git
 cd zone-dyndns
-cp ./.env.example ./.env
-cp ./conf/ip.conf.example ./conf/ip.conf
-cp ./conf/records.conf.example ./conf/records.conf
+cp .env.example .env && chmod 600 .env
+cp conf/records.conf.example conf/records.conf
 ```
 
-#### Configure .env
-Add your zone.ee username and API key to .env file. 
+### .env
 
-By default the tool checks your public IP address every 5 minutes. You can change the frequency in .env file. 
+| Setting | Default | Meaning |
+|---|---|---|
+| `ZONE_USERNAME` | — | Zone username. Required. |
+| `ZONE_API_KEY` | — | Zone API key. Required. |
+| `CHECK_FREQUENCY` | `5` | Minutes between checks. |
+| `NETWORK_RETRY_DELAY` | `10` | Seconds before retrying a failed operation. |
+| `MAX_ATTEMPTS` | `5` | Tries per operation, then wait for the next check. |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
+| `TZ` | — | Time zone for log timestamps. Unset means UTC. |
+| `PUID`, `PGID` | `65534` | Container user. Set only if a non-root account edits `conf/`. |
 
-#### Configure records.conf
-Open `conf/records.conf` and add the domains and subdomains that 
-you want to point to your IP-address.
+### conf/records.conf
 
-Each A-record in zone.ee has a specific resource number, 
-so you could add multiple A-records per domain. This tool 
-only handles one record per domain, as it is unlikely that
-anyone would want to have multiple A-records with a dynamic IP.
-Feel free to clone and modify the code if this is what you need. 
+One (sub)domain per line, `#` for comments:
 
 ```conf
-# Enter domains with resource numbers you want to point to your own (dynamic) IP-address
-# Each (sub)domain and resource id key-value pair on its own separate line
-example.org=12323
-# Domain without resource number
+# my home services
+example.org
 blog.example.org
 ```
 
-If you don't know the resource id of your current A-record or don't have
-any existing records for your domain(s), then worry not! The tool will
-take care of finding the resource id for you. If it doesn't exist, it
-will even create a new record for you! 
+Records are matched by name, so there are no resource numbers to look up. A leftover `=12323`
+from an older version is ignored, and stripped when the tool tidies the file up.
 
-You might run into trouble if you already have more than one A-record 
-pointing to a (sub)domain. In that case the easiest solution is to delete
-all the records in zone.ee manually and let the tool recreate a new record.
+## Run
 
-If you have configured the .env and records.conf files, you are ready to 
-#### Deploy the container 
-
-Just run 
 ```bash
 docker compose up -d
+docker compose logs -f
 ```
-in project root directory. If you're running it on a raspberry pi or something similarly powered, it will take a few minutes to build and compile. 
 
-You can verify with `docker ps` that the container is running. Logs are mounted to `logs/updater.log`. Check the logs to see if you have problems. 
+Startup logs one line. A check that changes nothing logs nothing. When an address changes you
+get one line per record:
 
-If everything works, you're free to remove the `./src` directory, as this is no longer needed. 
+```
+level=INFO msg="zone-dyndns starting" conf_dir=conf check_frequency=10m0s retry_delay=30s max_attempts=5 log_level=INFO dry_run=false
+level=INFO msg="record updated" domain=example.org zone=example.org destination=203.0.113.7 previous=203.0.113.4
+```
+
+Set `LOG_LEVEL=debug` to see every check, including the records in your zone it deliberately
+ignored. Logs rotate at 3 × 5 MB. The image has no shell: the log is your only window in.
+
+No prebuilt image is published. Compose builds it locally, which takes a couple of minutes on
+a Raspberry Pi.
+
+## Check before it writes
 
 ```bash
-rm -r src
+docker compose run --rm zone-dyndns -dry-run
 ```
 
-If there are no (major) bugs, I might add a prebuilt docker container to a docker registry in the future for quicker deployment. Maybe prebuilt binaries as well, if there are more than two users of this tool.   
+`-dry-run` reads the zone and logs every change it would make. It sends no mutating request
+and writes no file, `records.conf` included.
+
+| Flag | Effect |
+|---|---|
+| `-conf <dir>` | Read `records.conf` from another directory. Default `conf`. |
+| `-dry-run` | Log the plan. Change nothing. |
+| `-allow-empty-zone` | Allow creating the first record in a zone whose listing is empty. |
+
+## Limitations
+
+- **One A-record per name.** A name with two records (round-robin DNS) is left alone, and the
+  log names both record IDs.
+- **Records Zone marks `modify:false` are skipped.** Zone does not let them be changed.
+- **A listing that cannot be read, or that comes back empty, is not treated as "record
+  missing".** Nothing is created or changed in that zone. The first record in a genuinely new
+  zone needs `-allow-empty-zone`.
+- **Never deletes.** A domain you remove from `records.conf` keeps its DNS record.
+- **IPv4 only**, and `ifconfig.me` must be reachable. If it answers with anything that is not
+  a routable IPv4 address, the check is abandoned and DNS is left alone.
+
+## Troubleshooting
+
+| Log line | Cause |
+|---|---|
+| `Invalid auth credentials` (401) | Wrong `ZONE_USERNAME` or `ZONE_API_KEY`. |
+| `Teenust ei leitud` (404) | Estonian for "service not found": the domain is not in this Zone account. |
+| `no listing available for zone ...` | The API could not be read. Nothing was changed. |
+| `could not tidy the domain list locally` | `conf/` is not writable by the container user: `chown -R <PUID>:<PGID> conf`. DNS was still updated. |
+
+## Development
+
+```bash
+cd src && go test ./...    # 43 tests, no network access needed
+```
+
+Needs Go 1.27.3 or newer. Builds for linux/amd64, linux/arm64, darwin/arm64 and
+windows/amd64. Shuts down on SIGTERM and Ctrl-C.
+
+Upgrading: `conf/ip.conf` and `logs/` are no longer used, and can be deleted. `records.conf`
+loses its record IDs on the first check that changes anything, comments kept. Keep `src/` —
+the image builds from it.
+
+A personal project, with no warranty.
